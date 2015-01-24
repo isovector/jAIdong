@@ -35,8 +35,12 @@ trait BWFutures {
       new collection.mutable.HashMap[BWUnit, MoveObj]()
   }
 
+  def waitLatency: Int = game.getLatencyFrames + 25
+
   private def getFirstFrame: Int =
-    game.getFrameCount + game.getLatencyFrames + 25
+    game.getFrameCount + waitLatency
+
+
 
   def moveTo(unit: BWUnit, pos: Position): Future[Position] = {
     unit.move(pos)
