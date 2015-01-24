@@ -33,9 +33,6 @@ class TestBot extends DefaultBWListener with Prediction with BWFutures {
     runPromises()
     updatePrediction()
 
-    game.setTextSize(10);
-    game.drawTextScreen(10, 10, "Seconds until 400 minerals: " + (mineralRate.estimateUntil(500) / game.getFPS.toFloat).toInt.toString);
-
     if (nextExpo.isDefined) {
       val pos = nextExpo.get
       game.drawBoxMap(pos.getX * 32, pos.getY * 32, (pos.getX + 4) * 32, (pos.getY + 3) * 32, bwapi.Color.Orange)
@@ -54,16 +51,13 @@ class TestBot extends DefaultBWListener with Prediction with BWFutures {
         synchronize(
           (length / unit.getType.topSpeed).toInt,
           mineralRate.estimateUntil(400)
-        ).map { _ =>
-          moveTo(unit, new Position(pos.getX * 32, pos.getY * 32)).onComplete {
-            case Success(_) =>
-              game.setScreenPosition(pos.getX * 32 - 540/2, pos.getY * 32 - 480/2)
-              haveEnough(400, 0).map { _ =>
-                unit.build(pos, UnitType.Terran_Command_Center)
-              }
-            case Failure(_) =>
-              nextExpo = None
-          }
+        ).flatMap { _ =>
+          moveTo(unit, new Position(pos.getX * 32, pos.getY * 32))
+        }.flatMap { _ =>
+          game.setScreenPosition(pos.getX * 32 - 540/2, pos.getY * 32 - 480/2)
+          haveEnough(400, 0)
+        }.map { _ =>
+          unit.build(pos, UnitType.Terran_Command_Center)
         }
       }
     }
