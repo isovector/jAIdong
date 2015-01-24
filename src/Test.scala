@@ -25,18 +25,16 @@ class TestBot extends DefaultBWListener with Prediction with BWFutures {
     game.enableFlag(1)
     game.setLocalSpeed(0)
 
-    println("Analyzing map...");
     BWTA.readMap();
     BWTA.analyze();
-    println("Map data ready");
   }
 
   override def onFrame(): Unit = {
-    promiseMoves()
+    runPromises()
     updatePrediction()
 
     game.setTextSize(10);
-    game.drawTextScreen(10, 10, "Seconds until 500 minerals: " + (mineralRate.estimateUntil(500) / game.getFPS.toFloat).toInt.toString);
+    game.drawTextScreen(10, 10, "Seconds until 400 minerals: " + (mineralRate.estimateUntil(500) / game.getFPS.toFloat).toInt.toString);
 
     if (nextExpo.isDefined) {
       val pos = nextExpo.get
@@ -44,23 +42,29 @@ class TestBot extends DefaultBWListener with Prediction with BWFutures {
     }
 
     self.getUnits.foreach { unit =>
-      if (unit.getType == UnitType.Terran_Command_Center && self.minerals >= 50 && self.supplyUsed < 16) {
+      if (unit.getType == UnitType.Terran_Command_Center && self.minerals >= 50 && self.supplyUsed < 14) {
         unit.train(UnitType.Terran_SCV);
       }
 
-      if (unit.getType.isWorker && self.minerals >= 400 && nextExpo.isEmpty) {
+      if (unit.getType.isWorker && self.minerals >= 300 && nextExpo.isEmpty) {
         nextExpo = Some(nextExpoLocation(unit))
-
         val pos = nextExpo.get
-        moveTo(unit, new Position(pos.getX * 32, pos.getY * 32)).onComplete {
-          case Success(_) =>
-            unit.build(pos, UnitType.Terran_Command_Center)
+        val length = BWTA.getGroundDistance( unit.getTilePosition, pos)
 
-          case Failure(_) =>
-            nextExpo = None
+        synchronize(
+          (length / unit.getType.topSpeed).toInt,
+          mineralRate.estimateUntil(400)
+        ).map { _ =>
+          moveTo(unit, new Position(pos.getX * 32, pos.getY * 32)).onComplete {
+            case Success(_) =>
+              game.setScreenPosition(pos.getX * 32 - 540/2, pos.getY * 32 - 480/2)
+              haveEnough(400, 0).map { _ =>
+                unit.build(pos, UnitType.Terran_Command_Center)
+              }
+            case Failure(_) =>
+              nextExpo = None
+          }
         }
-
-        game.setScreenPosition(pos.getX * 32 - 640/2, pos.getY * 32 - 480/2)
       }
     }
   }
@@ -89,12 +93,13 @@ class TestBot extends DefaultBWListener with Prediction with BWFutures {
       .head
   }
 
-  override def onEnd(won: Boolean): Unit = {
-    System.exit(0)
-  }
-
-  override def onPlayerLeft(player: Player): Unit = {
-    System.exit(0)
+  def synchronize(event1: Int, event2: Int) = {
+    val diff =
+      if (event1 == 0 || event2 == 0)
+        0
+      else
+        math.max(event1, event2) - math.min(event1, event2)
+    waitFor(diff)
   }
 }
 
