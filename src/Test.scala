@@ -4,9 +4,13 @@ import bwapi.{Unit => BWUnit, _}
 import bwta.BaseLocation
 import bwta.BWTA
 import scala.collection.JavaConversions._
+import scala.util.{Success, Failure}
 
 
-class TestBot extends DefaultBWListener with Prediction {
+import jaidong.util._
+
+
+class TestBot extends DefaultBWListener with Prediction with BWFutures {
   val mirror = new Mirror()
   lazy val game: Game = mirror.getGame
   lazy val self: Player = game.self
@@ -19,7 +23,7 @@ class TestBot extends DefaultBWListener with Prediction {
 
   override def onStart(): Unit = {
     game.enableFlag(1)
-    game.setLocalSpeed(10)
+    game.setLocalSpeed(0)
 
     println("Analyzing map...");
     BWTA.readMap();
@@ -27,8 +31,8 @@ class TestBot extends DefaultBWListener with Prediction {
     println("Map data ready");
   }
 
-  var isExpanding = false
   override def onFrame(): Unit = {
+    promiseMoves()
     updatePrediction()
 
     game.setTextSize(10);
@@ -40,36 +44,40 @@ class TestBot extends DefaultBWListener with Prediction {
     }
 
     self.getUnits.foreach { unit =>
-      if (unit.getType == UnitType.Terran_Command_Center && self.minerals >= 50) {
+      if (unit.getType == UnitType.Terran_Command_Center && self.minerals >= 50 && self.supplyUsed < 16) {
         unit.train(UnitType.Terran_SCV);
       }
 
-      if (unit.getType.isWorker && self.minerals >= 500 && !isExpanding) {
-        println("I need to expand yo")
-        isExpanding = true
+      if (unit.getType.isWorker && self.minerals >= 400 && nextExpo.isEmpty) {
         nextExpo = Some(nextExpoLocation(unit))
-        unit.build(nextExpo.get, UnitType.Terran_Command_Center)
 
         val pos = nextExpo.get
+        moveTo(unit, new Position(pos.getX * 32, pos.getY * 32)).onComplete {
+          case Success(_) =>
+            unit.build(pos, UnitType.Terran_Command_Center)
+
+          case Failure(_) =>
+            nextExpo = None
+        }
+
         game.setScreenPosition(pos.getX * 32 - 640/2, pos.getY * 32 - 480/2)
-      }
-
-      if (unit.getType.isWorker && unit.isIdle) {
-        val closestMineral =
-          game.neutral.getUnits.toList
-            .filter(_.getType.isMineralField)
-            .sortBy(_.getDistance(unit))
-            .head
-
-          unit.gather(closestMineral, false);
       }
     }
   }
 
   override def onUnitComplete(unit: BWUnit): Unit = {
     if (unit.getType == UnitType.Terran_Command_Center) {
-      isExpanding = false
       nextExpo = None
+    }
+
+    if (unit.getType.isWorker) {
+      val closestMineral =
+        game.neutral.getUnits.toList
+          .filter(_.getType.isMineralField)
+          .sortBy(_.getDistance(unit))
+          .head
+
+      unit.gather(closestMineral, false);
     }
   }
 
