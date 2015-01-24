@@ -1,7 +1,6 @@
 package jaidong
 
 import bwapi.{Unit => BWUnit, _}
-import bwta.BWTA
 import jaidong.utils.RollingAverage
 import scala.collection.JavaConversions._
 
