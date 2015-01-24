@@ -1,9 +1,11 @@
+package jaidong
+
 import bwapi.{Unit => BWUnit, _}
 import bwta.BWTA
 import scala.collection.JavaConversions._
 
 
-class TestBot extends DefaultBWListener {
+class TestBot extends DefaultBWListener with Prediction {
   val mirror = new Mirror()
   lazy val game: Game = mirror.getGame
   lazy val self: Player = game.self
@@ -19,8 +21,10 @@ class TestBot extends DefaultBWListener {
   }
 
   override def onFrame(): Unit = {
+    updatePrediction()
+
     game.setTextSize(10);
-    game.drawTextScreen(10, 10, "Playing as " + self.getName + " - " + self.getRace);
+    game.drawTextScreen(10, 10, "Seconds until 500 minerals: " + (mineralRate.estimateUntil(500) / game.getFPS.toFloat).toString);
 
     self.getUnits.foreach { unit =>
       if (unit.getType == UnitType.Terran_Command_Center && self.minerals >= 50) {
@@ -58,47 +62,3 @@ object CompilerMain {
   }
 }
 
-/*
-public class TestBot1 extends DefaultBWListener {
-
-    @Override
-    public void onFrame() {
-
-
-        //iterate through my units
-        for (Unit myUnit : self.getUnits()) {
-            units.append(myUnit.getType()).append(" ").append(myUnit.getTilePosition()).append("\n");
-
-            //if there's enough minerals, train an SCV
-            if (myUnit.getType() == UnitType.Terran_Command_Center && self.minerals() >= 50) {
-                myUnit.train(UnitType.Terran_SCV);
-            }
-
-            //if it's a drone and it's idle, send it to the closest mineral patch
-            if (myUnit.getType().isWorker() && myUnit.isIdle()) {
-                Unit closestMineral = null;
-
-                //find the closest mineral
-                for (Unit neutralUnit : game.neutral().getUnits()) {
-                    if (neutralUnit.getType().isMineralField()) {
-                        if (closestMineral == null || myUnit.getDistance(neutralUnit) < myUnit.getDistance(closestMineral)) {
-                            closestMineral = neutralUnit;
-                        }
-                    }
-                }
-
-                //if a mineral patch was found, send the drone to gather it
-                if (closestMineral != null) {
-                    myUnit.gather(closestMineral, false);
-                }
-            }
-        }
-
-        //draw my units on screen
-        game.drawTextScreen(10, 25, units.toString());
-    }
-
-    public static void main(String[] args) {
-        new TestBot1().run();
-    }
-}*/
