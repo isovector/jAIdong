@@ -7,39 +7,38 @@ import scala.collection.JavaConversions._
 import scala.concurrent.Future
 import scala.util.{Success, Failure}
 
-case class Resources(minerals: Int, gas: Int) {
+case class Resources(minerals: Int, gas: Int, supply: Int) {
   def +(b: Resources) =
-    Resources(minerals + b.minerals, gas + b.gas)
+    Resources(minerals + b.minerals, gas + b.gas, supply + b.supply)
 
   def -(b: Resources) =
-    Resources(minerals - b.minerals, gas - b.gas)
+    Resources(minerals - b.minerals, gas - b.gas, supply - b.supply)
 
-  override def toString() = s"\u0007$minerals/$gas"
+  override def toString() = s"\u0007$minerals/$gas/$supply"
 
   def >=(b: Resources) =
-    minerals >= b.minerals && gas >= b.gas
+    minerals >= b.minerals && gas >= b.gas && supply >= b.supply
 }
 
-trait Allocation extends BWFutures {
-  val self: Player
-
-  def available: Resources =
-    new Resources(self.minerals, self.gas)
-
-  case class Voucher(resources: Resources, onCancel: () => Unit) {
-    def cash() = {
-      sleep(waitLatency).map { _ =>
-        cancel()
-      }
-    }
-
-    def cancel() = {
-      onCancel()
+case class Voucher(resources: Resources, onCancel: () => Unit) {
+  def cash() = {
+    Bot.sleep(Bot.waitLatency * 3).map { _ =>
+      cancel()
     }
   }
 
+  def cancel() = {
+    onCancel()
+  }
+}
+
+trait Allocation {
+  val self: Player
+
+  def available: Resources = new Resources(self.minerals, self.gas, self.supplyTotal - self.supplyUsed)
+
   def allocate(priority: Int, amount: Resources): Future[Voucher] = {
-    waitFor(priority, () => available >= amount, false).map { obj =>
+    Bot.waitFor(priority, () => available >= amount, false).map { obj =>
       Voucher(amount, obj.toDequeue.get)
     }
   }

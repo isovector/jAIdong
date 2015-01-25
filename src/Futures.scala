@@ -21,7 +21,18 @@ trait BWFutures {
   val game: Game
   val self: Player
 
-  private case class MoveObj(after: Int) {
+  private object CreateSource {
+    type Type = Int
+
+    val CREATE = 1
+    val MORPH = 2
+  }
+
+  private case class CreateObj(utype: UnitType, source: CreateSource.Type) {
+    val promise = Promise[BWUnit]()
+  }
+
+  private case class MoveObj(after: Int, pos: Position) {
     val promise = Promise[Position]()
   }
 
@@ -45,6 +56,7 @@ trait BWFutures {
     var times = List[PredObj]()
     val moves =
       new collection.mutable.HashMap[BWUnit, MoveObj]()
+    var creates = collection.mutable.ListBuffer[CreateObj]()
     val priority =
       new collection.mutable.PriorityQueue[PrioObj]()
   }
@@ -58,8 +70,17 @@ trait BWFutures {
   def moveTo(unit: BWUnit, pos: Position): Future[Position] = {
     unit.move(pos)
 
-    val obj = MoveObj(getFirstFrame)
+    val obj = MoveObj(getFirstFrame, pos)
     promises.moves += unit -> obj
+
+    obj.promise.future
+  }
+
+  def morph(unit: BWUnit, utype: UnitType): Future[BWUnit] = {
+    unit.morph(utype)
+
+    val obj = CreateObj(utype, CreateSource.MORPH)
+    promises.creates += obj
 
     obj.promise.future
   }
@@ -88,6 +109,27 @@ trait BWFutures {
     promises.times = promises.times :+ obj
     obj.promise.future.flatMap { _ =>
       future
+    }
+  }
+
+  def synchronize(event1: Int, event2: Int) = {
+    val diff =
+      if (event1 == 0 || event2 == 0)
+        0
+      else
+        math.max(event1, event2) - math.min(event1, event2)
+    sleep(diff)
+  }
+
+  def runMorphPromises(unit: BWUnit) = {
+    val like = CreateObj(unit.getType, CreateSource.MORPH)
+    val found = promises.creates.find(_ == like)
+
+    if (found.isDefined) {
+      val obj = found.get
+      promises.creates -= obj
+
+      obj.promise.success(unit)
     }
   }
 
@@ -120,10 +162,39 @@ trait BWFutures {
         obj.promise.failure(new Exception("unit lost"))
         promises.moves -= unit
       } else if (unit.isIdle && now >= obj.after) {
-        obj.promise.success(unit.getPosition)
+        val dist = obj.pos.getDistance(unit.getPosition)
+
+        if (dist < 10) {
+          obj.promise.success(unit.getPosition)
+        } else {
+          obj.promise.failure(new Exception("too far"))
+        }
+
         promises.moves -= unit
       }
     }
+  }
+
+  def debugFutures() = {
+    println()
+    println()
+    println("----- TIMES -----")
+    println(promises.times.mkString("\n"))
+
+    println()
+    println()
+    println("----- PRIORITY -----")
+    println(promises.priority.mkString("\n"))
+
+    println()
+    println()
+    println("----- CREATES -----")
+    println(promises.creates.mkString("\n"))
+
+    println()
+    println()
+    println("----- MOVES -----")
+    println(promises.moves.mkString("\n"))
   }
 }
 }

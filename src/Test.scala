@@ -12,15 +12,22 @@ import jaidong.Implicits._
 import jaidong.util._
 
 
-class TestBot extends DefaultBWListener with Prediction with Allocation {
+object Bot extends Prediction with Allocation with BWFutures {
   val mirror = new Mirror()
   lazy val game: Game = mirror.getGame
   lazy val self: Player = game.self
+}
+
+
+class TestBot extends DefaultBWListener {
+  def game = Bot.game
+  def self = Bot.self
   var nextExpo: Option[TilePosition] = None
+  val macromgr = new jaidong.mgr.MacroMgr()
 
   def run() = {
-    mirror.getModule.setEventListener(this)
-    mirror.startGame()
+    Bot.mirror.getModule.setEventListener(this)
+    Bot.mirror.startGame()
   }
 
   override def onStart(): Unit = {
@@ -32,11 +39,15 @@ class TestBot extends DefaultBWListener with Prediction with Allocation {
   }
 
   override def onFrame(): Unit = {
-    runPromises()
-    updatePrediction()
+    Bot.runPromises()
+    Bot.updatePrediction()
+
+    if (game.getKeyState(Key.K_DELETE)) {
+      Bot.debugFutures()
+    }
 
     game.setTextSize(10);
-    game.drawTextScreen(10, 10, "Available: " + available.toString)
+    game.drawTextScreen(10, 10, "Available: " + Bot.available.toString)
 
     if (nextExpo.isDefined) {
       val tpos = nextExpo.get
@@ -50,38 +61,42 @@ class TestBot extends DefaultBWListener with Prediction with Allocation {
         val tpos = nextExpo.get
         val pos = tpos.toPosition
 
-        var voucherFuture: Option[Future[Voucher]] = None
-        synchronize(
+        Bot.synchronize(
           unit.estimateTimeTo(tpos),
-          mineralRate.estimateUntil(300)
+          Bot.mineralRate.estimateUntil(300)
         ).flatMap { _ =>
-          voucherFuture = Some(allocate(80, Resources(300, 0)))
-          moveTo(unit, pos)
+          println("moving")
+          Bot.moveTo(unit, pos)
         }.flatMap { _ =>
+          println("made it here")
           game.setScreenPosition(pos.getX - 640/2, pos.getY - 330/2)
-          waitFor(voucherFuture.get)
+          Zerg_Hatchery.allocate(80)
         }.map { voucher =>
+          println("building hatchery")
           voucher.cash()
           unit.build(tpos, Zerg_Hatchery)
+        }.onFailure {
+          case _: Exception =>
+            nextExpo = None
+            onUnitMorph(unit)
         }
       }
     }
   }
 
   override def onUnitComplete(unit: BWUnit): Unit = {
-    if (game.getFrameCount < waitLatency) {
+    if (game.getFrameCount < Bot.waitLatency) {
       onUnitMorph(unit)
     }
 
     if (unit is Zerg_Larva) {
-      allocate(50, Resources(50, 0)).map { voucher =>
-        voucher.cash()
-        unit.morph(Zerg_Drone)
-      }
+      macromgr.onNewLarva(unit)
     }
   }
 
   override def onUnitMorph(unit: BWUnit): Unit = {
+    Bot.runMorphPromises(unit)
+
     if (unit is Zerg_Hatchery) {
       nextExpo = None
     }
@@ -93,9 +108,18 @@ class TestBot extends DefaultBWListener with Prediction with Allocation {
           .sortBy(_.getDistance(unit))
           .head
 
-      sleep(waitLatency).map { _ =>
+      Bot.sleep(Bot.waitLatency).map { _ =>
         unit.gather(closestMineral, false);
       }
+    }
+
+    if (unit is Zerg_Overlord) {
+      unit.move(
+        BWTA.getStartLocations
+          .map(_.getTilePosition)
+          .filter(_ != self.getStartLocation)
+          .head
+          .toPosition)
     }
   }
 
@@ -107,13 +131,8 @@ class TestBot extends DefaultBWListener with Prediction with Allocation {
       .head
   }
 
-  def synchronize(event1: Int, event2: Int) = {
-    val diff =
-      if (event1 == 0 || event2 == 0)
-        0
-      else
-        math.max(event1, event2) - math.min(event1, event2)
-    sleep(diff)
+  override def onReceiveText(player: Player, msg: String): Unit = {
+    println(msg)
   }
 }
 
