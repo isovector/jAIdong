@@ -5,13 +5,14 @@ import bwapi.{Unit => BWUnit, _}
 import bwta.BaseLocation
 import bwta.BWTA
 import scala.collection.JavaConversions._
+import scala.concurrent.Future
 import scala.util.{Success, Failure}
 
 import jaidong.Implicits._
 import jaidong.util._
 
 
-class TestBot extends DefaultBWListener with Prediction with BWFutures {
+class TestBot extends DefaultBWListener with Prediction with Allocation {
   val mirror = new Mirror()
   lazy val game: Game = mirror.getGame
   lazy val self: Player = game.self
@@ -34,6 +35,9 @@ class TestBot extends DefaultBWListener with Prediction with BWFutures {
     runPromises()
     updatePrediction()
 
+    game.setTextSize(10);
+    game.drawTextScreen(10, 10, "Available: " + available.toString)
+
     if (nextExpo.isDefined) {
       val tpos = nextExpo.get
       val pos = tpos.toPosition
@@ -47,21 +51,21 @@ class TestBot extends DefaultBWListener with Prediction with BWFutures {
         val pos = tpos.toPosition
         val length = BWTA.getGroundDistance(unit.getTilePosition, tpos)
 
+        var voucherFuture: Option[Future[Voucher]] = None
         synchronize(
           (length / unit.getType.topSpeed).toInt,
           mineralRate.estimateUntil(300)
         ).flatMap { _ =>
+          voucherFuture = Some(allocate(80, Resources(300, 0)))
           moveTo(unit, pos)
         }.flatMap { _ =>
           game.setScreenPosition(pos.getX - 640/2, pos.getY - 330/2)
-          haveEnough(300, 0)
-        }.map { _ =>
+          waitFor(voucherFuture.get)
+        }.map { voucher =>
+          voucher.cash()
           unit.build(tpos, Zerg_Hatchery)
         }
       }
-
-      if (unit is Zerg_Larva)
-        unit.morph(Zerg_Drone)
     }
   }
 
@@ -69,11 +73,16 @@ class TestBot extends DefaultBWListener with Prediction with BWFutures {
     if (game.getFrameCount < waitLatency) {
       onUnitMorph(unit)
     }
-    println("on complete " + unit.getType.toString)
+
+    if (unit is Zerg_Larva) {
+      allocate(50, Resources(50, 0)).map { voucher =>
+        voucher.cash()
+        unit.morph(Zerg_Drone)
+      }
+    }
   }
 
   override def onUnitMorph(unit: BWUnit): Unit = {
-    println("on morph " + unit.getType.toString)
     if (unit is Zerg_Hatchery) {
       nextExpo = None
     }
@@ -85,7 +94,7 @@ class TestBot extends DefaultBWListener with Prediction with BWFutures {
           .sortBy(_.getDistance(unit))
           .head
 
-      waitFor(waitLatency).map { _ =>
+      sleep(waitLatency).map { _ =>
         unit.gather(closestMineral, false);
       }
     }
@@ -105,16 +114,14 @@ class TestBot extends DefaultBWListener with Prediction with BWFutures {
         0
       else
         math.max(event1, event2) - math.min(event1, event2)
-    waitFor(diff)
+    sleep(diff)
   }
 }
 
 
-object CompilerMain {
+object Main {
   def main(args: Array[String]): Unit = {
     System.setProperty("os.arch", "x86")
-    println(System.getProperty("os.arch"))
-
     new TestBot().run()
   }
 }

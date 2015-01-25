@@ -29,10 +29,20 @@ trait BWFutures {
     val promise = Promise[Unit]()
   }
 
+  def priorityOf[T](obj: PrioObj[T]) =
+    obj.priority
+  implicit val ordering = Ordering.by(priorityOf[Unit])
+
+  case class PrioObj[T](priority: Int, predicate: () => Boolean) {
+    val promise = Promise[T]()
+  }
+
   private object promises {
     var times = List[PredObj]()
     val moves =
       new collection.mutable.HashMap[BWUnit, MoveObj]()
+    val priority =
+      new collection.mutable.PriorityQueue[PrioObj[Unit]]()
   }
 
   def waitLatency: Int = game.getLatencyFrames + 25
@@ -41,31 +51,46 @@ trait BWFutures {
     game.getFrameCount + waitLatency
 
 
-
   def moveTo(unit: BWUnit, pos: Position): Future[Position] = {
-    unit.move(pos)
-
     val obj = MoveObj(getFirstFrame)
     promises.moves += unit -> obj
+    unit.move(pos)
 
     obj.promise.future
   }
 
-  def waitFor(duration: Int): Future[Unit] = {
+  def sleep(duration: Int): Future[Unit] = {
     val when = game.getFrameCount + duration
     val obj = new PredObj(() => game.getFrameCount >= when)
     promises.times = promises.times :+ obj
     obj.promise.future
   }
 
-  def haveEnough(minerals: Int, gas: Int): Future[Unit] = {
-    val obj = new PredObj(() => self.minerals >= minerals && self.gas >= gas)
-    promises.times = promises.times :+ obj
+  def waitFor(prio: Int, predicate: () => Boolean): Future[Unit] = {
+    val obj = new PrioObj[Unit](
+      prio,
+      predicate)
+    promises.priority.enqueue(obj)
     obj.promise.future
+  }
+
+  def waitFor[T](future: Future[T]): Future[T] = {
+    val obj = new PredObj(() => future.isCompleted)
+    promises.times = promises.times :+ obj
+    obj.promise.future.flatMap { _ =>
+      future
+    }
   }
 
   def runPromises() = {
     val now = game.getFrameCount
+
+    if (!promises.priority.isEmpty) {
+      while (promises.priority.max.predicate()) {
+        val obj = promises.priority.dequeue()
+        obj.promise.success({})
+      }
+    }
 
     promises.times = promises.times.filter { obj =>
       if (obj.predicate()) {
