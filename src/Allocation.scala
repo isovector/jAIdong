@@ -14,33 +14,19 @@ case class Resources(minerals: Int, gas: Int) {
   def -(b: Resources) =
     Resources(minerals - b.minerals, gas - b.gas)
 
-  def isPositive =
-    minerals >= 0 && gas >= 0
+  override def toString() = s"\u0007$minerals/$gas"
 
-  override def toString() =
-    (if (isPositive) "\u0007" else "\u0008") + s"$minerals/$gas"
-
-  def >(b: Resources) =
-    minerals > b.minerals && gas > b.gas
+  def >=(b: Resources) =
+    minerals >= b.minerals && gas >= b.gas
 }
 
 trait Allocation extends BWFutures {
   val self: Player
 
-  def rawResources: Resources =
+  def available: Resources =
     new Resources(self.minerals, self.gas)
 
-  private object allocated {
-    var minerals: Int = 0
-    var gas: Int = 0
-
-    def asResources = Resources(minerals, gas)
-  }
-
-  def available: Resources =
-    rawResources - allocated.asResources
-
-  case class Voucher(resources: Resources) {
+  case class Voucher(resources: Resources, onCancel: () => Unit) {
     def cash() = {
       sleep(waitLatency).map { _ =>
         cancel()
@@ -48,17 +34,13 @@ trait Allocation extends BWFutures {
     }
 
     def cancel() = {
-      allocated.minerals -= resources.minerals
-      allocated.gas -= resources.gas
+      onCancel()
     }
   }
 
   def allocate(priority: Int, amount: Resources): Future[Voucher] = {
-    allocated.minerals += amount.minerals
-    allocated.gas += amount.gas
-
-    waitFor(priority, () => available.isPositive).map { _ =>
-      Voucher(amount)
+    waitFor(priority, () => available >= amount, false).map { obj =>
+      Voucher(amount, obj.toDequeue.get)
     }
   }
 }

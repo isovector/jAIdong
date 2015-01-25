@@ -29,12 +29,16 @@ trait BWFutures {
     val promise = Promise[Unit]()
   }
 
-  def priorityOf[T](obj: PrioObj[T]) =
+  def priorityOf(obj: PrioObj) =
     obj.priority
-  implicit val ordering = Ordering.by(priorityOf[Unit])
+  implicit val ordering = Ordering.by(priorityOf)
 
-  case class PrioObj[T](priority: Int, predicate: () => Boolean) {
-    val promise = Promise[T]()
+  case class PrioObj(
+      priority: Int,
+      predicate: () => Boolean,
+      dequeue: Boolean) {
+    var toDequeue: Option[() => Unit] = None
+    val promise = Promise[PrioObj]()
   }
 
   private object promises {
@@ -42,7 +46,7 @@ trait BWFutures {
     val moves =
       new collection.mutable.HashMap[BWUnit, MoveObj]()
     val priority =
-      new collection.mutable.PriorityQueue[PrioObj[Unit]]()
+      new collection.mutable.PriorityQueue[PrioObj]()
   }
 
   def waitLatency: Int = game.getLatencyFrames + 25
@@ -52,9 +56,10 @@ trait BWFutures {
 
 
   def moveTo(unit: BWUnit, pos: Position): Future[Position] = {
+    unit.move(pos)
+
     val obj = MoveObj(getFirstFrame)
     promises.moves += unit -> obj
-    unit.move(pos)
 
     obj.promise.future
   }
@@ -66,10 +71,14 @@ trait BWFutures {
     obj.promise.future
   }
 
-  def waitFor(prio: Int, predicate: () => Boolean): Future[Unit] = {
-    val obj = new PrioObj[Unit](
+  def waitFor(
+      prio: Int,
+      predicate: () => Boolean,
+      dequeue: Boolean = true): Future[PrioObj] = {
+    val obj = new PrioObj(
       prio,
-      predicate)
+      predicate,
+      dequeue)
     promises.priority.enqueue(obj)
     obj.promise.future
   }
@@ -86,9 +95,16 @@ trait BWFutures {
     val now = game.getFrameCount
 
     if (!promises.priority.isEmpty) {
-      while (promises.priority.max.predicate()) {
-        val obj = promises.priority.dequeue()
-        obj.promise.success({})
+      val max = promises.priority.max
+
+      if (max.toDequeue.isDefined) {
+      } else if (max.predicate()) {
+        if (max.dequeue)
+          promises.priority.dequeue()
+        else
+          max.toDequeue = Some(() => promises.priority.dequeue())
+
+        max.promise.success(max)
       }
     }
 

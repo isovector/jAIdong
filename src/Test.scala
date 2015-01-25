@@ -49,11 +49,10 @@ class TestBot extends DefaultBWListener with Prediction with Allocation {
         nextExpo = Some(nextExpoLocation(unit))
         val tpos = nextExpo.get
         val pos = tpos.toPosition
-        val length = BWTA.getGroundDistance(unit.getTilePosition, tpos)
 
         var voucherFuture: Option[Future[Voucher]] = None
         synchronize(
-          (length / unit.getType.topSpeed).toInt,
+          unit.estimateTimeTo(tpos),
           mineralRate.estimateUntil(300)
         ).flatMap { _ =>
           voucherFuture = Some(allocate(80, Resources(300, 0)))

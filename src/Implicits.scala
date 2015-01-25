@@ -16,6 +16,11 @@ package object Implicits {
 
   case class RichUnit(u: BWUnit) extends AnyVal {
     def is(ut: UnitType) = u.getType == ut
+
+    def estimateTimeTo(pos: TilePosition) = {
+      val dist = BWTA.getGroundDistance(u.getTilePosition, pos)
+      (dist / u.getType.topSpeed).toInt
+    }
   }
 
   implicit def toRichPos(u: Position): RichPosition =
