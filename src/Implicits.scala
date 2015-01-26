@@ -5,14 +5,29 @@ import bwta.BWTA
 import scala.concurrent.Future
 
 package object Implicits {
+  private def clamp(x: Int, bot: Int, top: Int) = {
+    math.max(math.min(x, top), bot)
+  }
+
   case class RichPosition(u: Position) {
     def toTilePosition: TilePosition =
       new TilePosition(u.getX / 32, u.getY / 32)
+
+    def compare(other: Position, epsilon: Int = 3): (Int, Int) = {
+      toTilePosition.compare(other.toTilePosition, epsilon)
+    }
   }
 
   case class RichTilePosition(u: TilePosition) {
     def toPosition: Position =
       new Position(u.getX * 32, u.getY * 32)
+
+    def compare(other: TilePosition, epsilon: Int = 3): (Int, Int) = {
+      val dx = (u.getX - other.getX) / epsilon
+      val dy = (u.getY - other.getY) / epsilon
+
+      (clamp(dx, -1, 1), clamp(dy, -1, 1))
+    }
   }
 
   case class RichUnit(u: BWUnit) extends AnyVal {

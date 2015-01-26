@@ -12,9 +12,45 @@ import jaidong._
 import jaidong.Implicits._
 import jaidong.util._
 
+case class Base(hatch: BWUnit, location: BaseLocation) {
+  val minerals =
+    Bot.game.neutral.getUnits.toList
+      .filter(_.getType.isMineralField)
+      .filter(_.getPosition.getApproxDistance(location.getPosition) < 6 * 64)
+  val geysers =
+    Bot.game.neutral.getUnits.toList
+      .filter(_ is Resource_Vespene_Geyser)
+      .filter(_.getPosition.getApproxDistance(location.getPosition) < 6 * 64)
+  private val totalMinPos =
+    minerals
+      .map(_.getPosition)
+      .reduceLeft((prev, next) =>
+        new Position(prev.getX + next.getX, prev.getY + next.getY))
+  val mineralCluster =
+    new Position(
+      totalMinPos.getX / minerals.length,
+      totalMinPos.getY / minerals.length)
+
+  val relMineralDir = mineralCluster.compare(hatch.getPosition)
+  val relGasDir     =
+    if (geysers.length > 0)
+      geysers.head.getPosition.compare(hatch.getPosition)
+    else (0, 0)
+}
+
 class MacroMgr {
   def game = Bot.game
   def self = Bot.self
+
+  lazy val main =
+    Base(
+      self.getUnits.filter(_ is Zerg_Hatchery).head,
+      BWTA
+        .getStartLocations
+        .filter(_.getTilePosition == self.getStartLocation)
+        .head)
+  val bases = new collection.mutable.MutableList[Base]()
+  val hatches = new collection.mutable.MutableList[BWUnit]()
 
   var supplyIncoming: Int = 0
 
@@ -23,24 +59,40 @@ class MacroMgr {
   }
 
   def onNewHatchery(hatch: BWUnit) = {
+    hatches += hatch
+
+    val baseLocation =
+      BWTA.getBaseLocations
+        .find(_.getTilePosition == hatch.getTilePosition)
+    if (baseLocation.isDefined)
+      bases += Base(hatch, baseLocation.get)
   }
 
+  def getLarva: BWUnit =
+    self.getUnits.toList.filter(_ is Zerg_Larva).head
+
   def onNewLarva(larva: BWUnit) = {
-    println(Bot.available.supply)
+    if (main.relMineralDir._1 < 0) {
+      Bot.sleep(Bot.waitLatency).map { _ =>
+        println("larva stop")
+        larva.stop()
+      }
+    }
+
     if (needsSupply) {
       val extraSupply = Zerg_Overlord.supplyProvided
       supplyIncoming += extraSupply
 
       Zerg_Overlord.allocate(90).flatMap { voucher =>
         voucher.forNext(Zerg_Egg)
-        Bot.morph(larva, Zerg_Overlord)
+        Bot.morph(getLarva, Zerg_Overlord)
       }.map { ovie =>
         supplyIncoming -= extraSupply
       }
     } else {
       Zerg_Drone.allocate(50).map { voucher =>
         voucher.forNext(Zerg_Egg)
-        larva.morph(Zerg_Drone)
+        getLarva.morph(Zerg_Drone)
       }
     }
   }

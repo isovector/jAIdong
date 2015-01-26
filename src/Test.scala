@@ -49,6 +49,16 @@ class TestBot extends DefaultBWListener {
     game.setTextSize(10);
     game.drawTextScreen(10, 10, "Available: " + Bot.available.toString)
 
+    macromgr.bases.foreach { base =>
+      val hatch = base.hatch.getPosition
+      val dir = base.relMineralDir
+      val gdir = base.relGasDir
+
+      game.drawLineMap(hatch.getX, hatch.getY, hatch.getX + dir._1 * 128, hatch.getY + dir._2 * 128, bwapi.Color.Blue)
+      game.drawLineMap(hatch.getX, hatch.getY, hatch.getX + gdir._1 * 128, hatch.getY + gdir._2 * 128, bwapi.Color.Green)
+    }
+
+
     if (nextExpo.isDefined) {
       val tpos = nextExpo.get
       val pos = tpos.toPosition
@@ -56,7 +66,7 @@ class TestBot extends DefaultBWListener {
     }
 
     self.getUnits.foreach { unit =>
-      if (unit.getType.isWorker && self.minerals >= 150 && nextExpo.isEmpty) {
+      if (unit.getType.isWorker && self.minerals >= 150 && nextExpo.isEmpty && macromgr.bases.length < 3) {
         nextExpo = Some(nextExpoLocation(unit))
         val tpos = nextExpo.get
         val pos = tpos.toPosition
@@ -68,11 +78,16 @@ class TestBot extends DefaultBWListener {
           Bot.mineralRate.estimateUntil(utype.cost.minerals)
         ).flatMap { _ =>
           println("moving")
-          voucherFuture = Some(utype.allocate(80))
+
+          if (macromgr.bases.length == 1)
+            voucherFuture = Some(utype.allocate(80))
           Bot.moveTo(unit, pos)
         }.flatMap { _ =>
           println("made it here")
           game.setScreenPosition(pos.getX - 640/2, pos.getY - 330/2)
+
+          if (macromgr.bases.length != 1)
+            voucherFuture = Some(utype.allocate(50))
           Bot.waitFor(voucherFuture.get)
         }.map { voucher =>
           println("building hatchery")
@@ -103,6 +118,7 @@ class TestBot extends DefaultBWListener {
     Bot.runCreatePromises(unit, CreateSource.MORPH)
 
     if (unit is Zerg_Hatchery) {
+      macromgr.onNewHatchery(unit)
       nextExpo = None
     }
 
