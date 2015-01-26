@@ -26,21 +26,20 @@ class MacroMgr {
   }
 
   def onNewLarva(larva: BWUnit) = {
+    println(Bot.available.supply)
     if (needsSupply) {
       val extraSupply = Zerg_Overlord.supplyProvided
       supplyIncoming += extraSupply
 
       Zerg_Overlord.allocate(90).flatMap { voucher =>
-        println("money for ovie")
-        voucher.cash()
+        voucher.forNext(Zerg_Egg)
         Bot.morph(larva, Zerg_Overlord)
       }.map { ovie =>
         supplyIncoming -= extraSupply
-        println("ovie done")
       }
     } else {
       Zerg_Drone.allocate(50).map { voucher =>
-        voucher.cash()
+        voucher.forNext(Zerg_Egg)
         larva.morph(Zerg_Drone)
       }
     }

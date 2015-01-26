@@ -56,25 +56,28 @@ class TestBot extends DefaultBWListener {
     }
 
     self.getUnits.foreach { unit =>
-      if (unit.getType.isWorker && self.minerals >= 200 && nextExpo.isEmpty) {
+      if (unit.getType.isWorker && self.minerals >= 150 && nextExpo.isEmpty) {
         nextExpo = Some(nextExpoLocation(unit))
         val tpos = nextExpo.get
         val pos = tpos.toPosition
 
+        val utype = Zerg_Hatchery
+        var voucherFuture: Option[Future[Voucher]] = None
         Bot.synchronize(
           unit.estimateTimeTo(tpos),
-          Bot.mineralRate.estimateUntil(300)
+          Bot.mineralRate.estimateUntil(utype.cost.minerals)
         ).flatMap { _ =>
           println("moving")
+          voucherFuture = Some(utype.allocate(80))
           Bot.moveTo(unit, pos)
         }.flatMap { _ =>
           println("made it here")
           game.setScreenPosition(pos.getX - 640/2, pos.getY - 330/2)
-          Zerg_Hatchery.allocate(80)
+          Bot.waitFor(voucherFuture.get)
         }.map { voucher =>
           println("building hatchery")
-          voucher.cash()
-          unit.build(tpos, Zerg_Hatchery)
+          voucher.forNext(utype)
+          unit.build(tpos, utype)
         }.onFailure {
           case _: Exception =>
             nextExpo = None
@@ -85,6 +88,8 @@ class TestBot extends DefaultBWListener {
   }
 
   override def onUnitComplete(unit: BWUnit): Unit = {
+    Bot.runCreatePromises(unit, CreateSource.COMPLETE)
+
     if (game.getFrameCount < Bot.waitLatency) {
       onUnitMorph(unit)
     }
@@ -95,7 +100,7 @@ class TestBot extends DefaultBWListener {
   }
 
   override def onUnitMorph(unit: BWUnit): Unit = {
-    Bot.runMorphPromises(unit)
+    Bot.runCreatePromises(unit, CreateSource.MORPH)
 
     if (unit is Zerg_Hatchery) {
       nextExpo = None
@@ -114,12 +119,14 @@ class TestBot extends DefaultBWListener {
     }
 
     if (unit is Zerg_Overlord) {
-      unit.move(
-        BWTA.getStartLocations
-          .map(_.getTilePosition)
-          .filter(_ != self.getStartLocation)
-          .head
-          .toPosition)
+      Bot.sleep(Bot.waitLatency).map { _ =>
+        unit.move(
+          BWTA.getStartLocations
+            .map(_.getTilePosition)
+            .filter(_ != self.getStartLocation)
+            .head
+            .toPosition)
+      }
     }
   }
 

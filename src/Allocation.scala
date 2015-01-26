@@ -20,22 +20,23 @@ case class Resources(minerals: Int, gas: Int, supply: Int) {
     minerals >= b.minerals && gas >= b.gas && supply >= b.supply
 }
 
-case class Voucher(resources: Resources, onCancel: () => Unit) {
+case class Voucher(resources: Resources, onCash: () => Unit) {
   def cash() = {
-    Bot.sleep(Bot.waitLatency * 3).map { _ =>
-      cancel()
-    }
+    onCash()
   }
 
-  def cancel() = {
-    onCancel()
+  def forNext(utype: UnitType) = {
+    Bot.onCreate(utype, CreateSource.ANY).map { _ =>
+      cash()
+    }
   }
 }
 
 trait Allocation {
   val self: Player
 
-  def available: Resources = new Resources(self.minerals, self.gas, self.supplyTotal - self.supplyUsed)
+  def available: Resources = new Resources(
+    self.minerals, self.gas, self.supplyTotal - self.supplyUsed)
 
   def allocate(priority: Int, amount: Resources): Future[Voucher] = {
     Bot.waitFor(priority, () => available >= amount, false).map { obj =>

@@ -17,16 +17,18 @@ implicit val ec = new ExecutionContext {
   def reportFailure(t: Throwable) {}
 }
 
+object CreateSource {
+  type Type = Int
+
+  val CREATE   = 1 << 0
+  val COMPLETE = 1 << 1
+  val MORPH    = 1 << 2
+  val ANY      = CREATE | COMPLETE | MORPH
+}
+
 trait BWFutures {
   val game: Game
   val self: Player
-
-  private object CreateSource {
-    type Type = Int
-
-    val CREATE = 1
-    val MORPH = 2
-  }
 
   private case class CreateObj(utype: UnitType, source: CreateSource.Type) {
     val promise = Promise[BWUnit]()
@@ -78,8 +80,11 @@ trait BWFutures {
 
   def morph(unit: BWUnit, utype: UnitType): Future[BWUnit] = {
     unit.morph(utype)
+    onCreate(utype, CreateSource.MORPH)
+  }
 
-    val obj = CreateObj(utype, CreateSource.MORPH)
+  def onCreate(utype: UnitType, source: CreateSource.Type): Future[BWUnit] = {
+    val obj = CreateObj(utype, source)
     promises.creates += obj
 
     obj.promise.future
@@ -121,9 +126,9 @@ trait BWFutures {
     sleep(diff)
   }
 
-  def runMorphPromises(unit: BWUnit) = {
-    val like = CreateObj(unit.getType, CreateSource.MORPH)
-    val found = promises.creates.find(_ == like)
+  def runCreatePromises(unit: BWUnit, flag: CreateSource.Type) = {
+    val found = promises.creates.find(
+      obj => obj.utype == unit.getType && (obj.source & flag) == flag)
 
     if (found.isDefined) {
       val obj = found.get
