@@ -8,15 +8,18 @@ import scala.collection.JavaConversions._
 import scala.concurrent.Future
 import scala.util.{Success, Failure}
 
+import shapeless.contrib.spire._
+import spire.implicits._
+
 import jaidong._
 import jaidong.Implicits._
 import jaidong.util._
 
 case class Base(hatch: BWUnit, location: BaseLocation) {
   val minerals =
-    Bot.game.neutral.getUnits.toList
+    Bot.game.getUnitsInRadius(location.getPosition, 6 * 64)
+      .toList
       .filter(_.getType.isMineralField)
-      .filter(_.getPosition.getApproxDistance(location.getPosition) < 6 * 64)
   val geysers =
     Bot.game.neutral.getUnits.toList
       .filter(_ is Resource_Vespene_Geyser)
@@ -35,7 +38,29 @@ case class Base(hatch: BWUnit, location: BaseLocation) {
   val relGasDir     =
     if (geysers.length > 0)
       geysers.head.getPosition.compare(hatch.getPosition)
-    else (0, 0)
+    else Vec2.zero
+
+  val drones = new collection.mutable.MutableList[BWUnit]()
+
+  def getPositionFor(ut: UnitType): TilePosition = {
+    val size = ut.tileSize
+    val hatchSize = hatch.getType.tileSize
+    val dir = -relMineralDir
+
+    var pos: Vec2 = hatch.getTilePosition
+
+    if (dir.x < 0)
+      pos -= Vec2(size.x, 0)
+    else (dir.x > 0)
+      pos += Vec2(hatchSize.x, 0)
+
+    if (dir.y < 0)
+      pos -= Vec2(0, size.y)
+    else (dir.y > 0)
+      pos += Vec2(0, hatchSize.y)
+
+    pos
+  }
 }
 
 class MacroMgr {
@@ -72,7 +97,7 @@ class MacroMgr {
     self.getUnits.toList.filter(_ is Zerg_Larva).head
 
   def onNewLarva(larva: BWUnit) = {
-    if (main.relMineralDir._1 < 0) {
+    if (main.relMineralDir.x < 0) {
       Bot.sleep(Bot.waitLatency).map { _ =>
         println("larva stop")
         larva.stop()

@@ -54,8 +54,8 @@ class TestBot extends DefaultBWListener {
       val dir = base.relMineralDir
       val gdir = base.relGasDir
 
-      game.drawLineMap(hatch.getX, hatch.getY, hatch.getX + dir._1 * 128, hatch.getY + dir._2 * 128, bwapi.Color.Blue)
-      game.drawLineMap(hatch.getX, hatch.getY, hatch.getX + gdir._1 * 128, hatch.getY + gdir._2 * 128, bwapi.Color.Green)
+      game.drawLineMap(hatch.getX, hatch.getY, hatch.getX + dir.x * 128, hatch.getY + dir.y * 128, bwapi.Color.Blue)
+      game.drawLineMap(hatch.getX, hatch.getY, hatch.getX + gdir.x * 128, hatch.getY + gdir.y * 128, bwapi.Color.Green)
     }
 
 
@@ -66,7 +66,7 @@ class TestBot extends DefaultBWListener {
     }
 
     self.getUnits.foreach { unit =>
-      if (unit.getType.isWorker && self.minerals >= 150 && nextExpo.isEmpty && macromgr.bases.length < 3) {
+      if (unit.getType.isWorker && self.minerals >= 200 && nextExpo.isEmpty && macromgr.bases.length < 3) {
         nextExpo = Some(nextExpoLocation(unit))
         val tpos = nextExpo.get
         val pos = tpos.toPosition
