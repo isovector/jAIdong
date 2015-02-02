@@ -51,12 +51,12 @@ case class Base(hatch: BWUnit, location: BaseLocation) {
 
     if (dir.x < 0)
       pos -= Vec2(size.x, 0)
-    else (dir.x > 0)
+    else if (dir.x > 0)
       pos += Vec2(hatchSize.x, 0)
 
     if (dir.y < 0)
       pos -= Vec2(0, size.y)
-    else (dir.y > 0)
+    else if (dir.y > 0)
       pos += Vec2(0, hatchSize.y)
 
     pos
@@ -67,15 +67,15 @@ class MacroMgr {
   def game = Bot.game
   def self = Bot.self
 
-  lazy val main =
-    Base(
-      self.getUnits.filter(_ is Zerg_Hatchery).head,
-      BWTA
-        .getStartLocations
-        .filter(_.getTilePosition == self.getStartLocation)
-        .head)
   val bases = new collection.mutable.MutableList[Base]()
+  def main = bases.head
   val hatches = new collection.mutable.MutableList[BWUnit]()
+
+  val inProgress = collection.mutable.Set[UnitType]()
+  val has = collection.mutable.Set[UnitType]()
+
+  val reservedSpots =
+    new collection.mutable.MutableList[(TilePosition, Vec2)]()
 
   var supplyIncoming: Int = 0
 
@@ -84,6 +84,8 @@ class MacroMgr {
   }
 
   def onNewHatchery(hatch: BWUnit) = {
+    reservedSpots += ((hatch.getTilePosition, hatch.getType.tileSize))
+
     hatches += hatch
 
     val baseLocation =
@@ -91,12 +93,15 @@ class MacroMgr {
         .find(_.getTilePosition == hatch.getTilePosition)
     if (baseLocation.isDefined)
       bases += Base(hatch, baseLocation.get)
+
+    hatch.getLarva.toList.foreach(onNewLarva)
   }
 
   def getLarva: BWUnit =
     self.getUnits.toList.filter(_ is Zerg_Larva).head
 
   def onNewLarva(larva: BWUnit) = {
+    println(main.relMineralDir)
     if (main.relMineralDir.x < 0) {
       Bot.sleep(Bot.waitLatency).map { _ =>
         println("larva stop")
@@ -121,5 +126,47 @@ class MacroMgr {
       }
     }
   }
-}
 
+  def getBaseFor(utype: UnitType): Base = {
+    main
+  }
+
+  def getAvailableWorker(near: Position): BWUnit = {
+    Bot.game
+      .getUnitsInRadius(near, 10 * 64)
+      .toList
+      .filter(_.getType.isWorker)
+      .sortBy(_.getDistance(near))
+      .head
+  }
+
+  def needs(utype: UnitType): Boolean = {
+    !(has.contains(utype) || inProgress.contains(utype))
+  }
+
+  def build(utype: UnitType, priority: Int): Unit = {
+    if (inProgress.contains(utype)) {
+      return
+    }
+
+    val base = getBaseFor(utype)
+    val pos = base.getPositionFor(utype)
+
+    reservedSpots += ((pos, utype.tileSize))
+
+    inProgress += utype
+
+    utype.allocate(priority).flatMap{ voucher =>
+      voucher.forNext(utype)
+      getAvailableWorker(pos.toPosition).build(pos, utype)
+      Bot.onCreate(utype, CreateSource.ANY)
+    }
+    .onComplete {
+      case Success(_) =>
+        has += utype
+        inProgress -= utype
+      case Failure(_) =>
+        inProgress -= utype
+    }
+  }
+}

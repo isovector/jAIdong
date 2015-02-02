@@ -127,14 +127,12 @@ trait BWFutures {
   }
 
   def runCreatePromises(unit: BWUnit, flag: CreateSource.Type) = {
-    val found = promises.creates.find(
-      obj => obj.utype == unit.getType && (obj.source & flag) == flag)
-
-    if (found.isDefined) {
-      val obj = found.get
-      promises.creates -= obj
-
-      obj.promise.success(unit)
+    promises
+      .creates
+      .filter( obj => obj.utype == unit.getType && (obj.source & flag) == flag)
+      .foreach { obj =>
+        promises.creates -= obj
+        obj.promise.success(unit)
     }
   }
 

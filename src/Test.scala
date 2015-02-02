@@ -8,6 +8,9 @@ import scala.collection.JavaConversions._
 import scala.concurrent.Future
 import scala.util.{Success, Failure}
 
+import shapeless.contrib.spire._
+import spire.implicits._
+
 import jaidong.Implicits._
 import jaidong.util._
 
@@ -49,6 +52,13 @@ class TestBot extends DefaultBWListener {
     game.setTextSize(10);
     game.drawTextScreen(10, 10, "Available: " + Bot.available.toString)
 
+    macromgr.reservedSpots.foreach { viz =>
+      val pos = viz._1.toPosition
+      //val size = viz._2 * 32
+      val size = Vec2(viz._2.x * 32, viz._2.y * 32)
+      game.drawBoxMap(pos.getX, pos.getY, pos.getX + size.x, pos.getY + size.y, bwapi.Color.Blue)
+    }
+
     macromgr.bases.foreach { base =>
       val hatch = base.hatch.getPosition
       val dir = base.relMineralDir
@@ -66,38 +76,8 @@ class TestBot extends DefaultBWListener {
     }
 
     self.getUnits.foreach { unit =>
-      if (unit.getType.isWorker && self.minerals >= 200 && nextExpo.isEmpty && macromgr.bases.length < 3) {
-        nextExpo = Some(nextExpoLocation(unit))
-        val tpos = nextExpo.get
-        val pos = tpos.toPosition
-
-        val utype = Zerg_Hatchery
-        var voucherFuture: Option[Future[Voucher]] = None
-        Bot.synchronize(
-          unit.estimateTimeTo(tpos),
-          Bot.mineralRate.estimateUntil(utype.cost.minerals)
-        ).flatMap { _ =>
-          println("moving")
-
-          if (macromgr.bases.length == 1)
-            voucherFuture = Some(utype.allocate(80))
-          Bot.moveTo(unit, pos)
-        }.flatMap { _ =>
-          println("made it here")
-          game.setScreenPosition(pos.getX - 640/2, pos.getY - 330/2)
-
-          if (macromgr.bases.length != 1)
-            voucherFuture = Some(utype.allocate(50))
-          Bot.waitFor(voucherFuture.get)
-        }.map { voucher =>
-          println("building hatchery")
-          voucher.forNext(utype)
-          unit.build(tpos, utype)
-        }.onFailure {
-          case _: Exception =>
-            nextExpo = None
-            onUnitMorph(unit)
-        }
+      if (unit.getType.isWorker && self.minerals > 200 && macromgr.needs(Zerg_Spawning_Pool)) {
+        macromgr.build(Zerg_Spawning_Pool, 90)
       }
     }
   }
@@ -107,6 +87,7 @@ class TestBot extends DefaultBWListener {
 
     if (game.getFrameCount < Bot.waitLatency) {
       onUnitMorph(unit)
+      return
     }
 
     if (unit is Zerg_Larva) {
@@ -145,6 +126,7 @@ class TestBot extends DefaultBWListener {
       }
     }
   }
+
 
   def nextExpoLocation(builder: BWUnit): TilePosition = {
     BWTA.getBaseLocations.toList

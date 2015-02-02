@@ -31,7 +31,7 @@ package object Implicits {
     def toPosition: Position =
       new Position(u.getX * 32, u.getY * 32)
 
-    def tupled: Vec2 = Vec2(u.getX, u.getY)
+    def toV: Vec2 = Vec2(u.getX, u.getY)
 
     def compare(other: TilePosition, epsilon: Int = 3): Vec2 = {
       val dx = (u.getX - other.getX) / epsilon

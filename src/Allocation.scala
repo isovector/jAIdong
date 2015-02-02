@@ -6,6 +6,7 @@ import jaidong.util._
 import scala.collection.JavaConversions._
 import scala.concurrent.Future
 import scala.util.{Success, Failure}
+
 import shapeless.contrib.spire._
 import spire.implicits._
 
