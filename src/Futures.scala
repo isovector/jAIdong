@@ -78,6 +78,25 @@ trait BWFutures {
     obj.promise.future
   }
 
+  def build(unit: BWUnit, utype: UnitType, pos: TilePosition): Future[BWUnit] = {
+    unit.build(pos, utype)
+
+    val obj = CreateObj(utype, CreateSource.ANY)
+    promises.creates += obj
+
+    sleep(waitLatency * 2).map { _ =>
+      obj.promise.failure(new Exception("building didn't appear"))
+    }
+
+    obj.promise.future.onFailure {
+      case _ =>
+        promises.creates -= obj
+    }
+
+    obj.promise.future
+
+  }
+
   def morph(unit: BWUnit, utype: UnitType): Future[BWUnit] = {
     unit.morph(utype)
     onCreate(utype, CreateSource.MORPH)
@@ -86,6 +105,11 @@ trait BWFutures {
   def onCreate(utype: UnitType, source: CreateSource.Type): Future[BWUnit] = {
     val obj = CreateObj(utype, source)
     promises.creates += obj
+
+    obj.promise.future.onFailure {
+      case _ =>
+        promises.creates -= obj
+    }
 
     obj.promise.future
   }
@@ -129,7 +153,7 @@ trait BWFutures {
   def runCreatePromises(unit: BWUnit, flag: CreateSource.Type) = {
     promises
       .creates
-      .filter( obj => obj.utype == unit.getType && (obj.source & flag) == flag)
+      .filter(obj => obj.utype == unit.getType && (obj.source & flag) == flag)
       .foreach { obj =>
         promises.creates -= obj
         obj.promise.success(unit)

@@ -127,7 +127,6 @@ class TestBot extends DefaultBWListener {
     }
   }
 
-
   def nextExpoLocation(builder: BWUnit): TilePosition = {
     BWTA.getBaseLocations.toList
       .map(_.getTilePosition)

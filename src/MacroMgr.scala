@@ -101,12 +101,8 @@ class MacroMgr {
     self.getUnits.toList.filter(_ is Zerg_Larva).head
 
   def onNewLarva(larva: BWUnit) = {
-    println(main.relMineralDir)
     if (main.relMineralDir.x < 0) {
-      Bot.sleep(Bot.waitLatency).map { _ =>
-        println("larva stop")
-        larva.stop()
-      }
+      Bot.sleep(Bot.waitLatency).map(_ => larva.stop())
     }
 
     if (needsSupply) {
@@ -149,6 +145,8 @@ class MacroMgr {
       return
     }
 
+    // utype.requiredUnits.map(u => build(u, priority))
+
     val base = getBaseFor(utype)
     val pos = base.getPositionFor(utype)
 
@@ -156,17 +154,24 @@ class MacroMgr {
 
     inProgress += utype
 
+    var unit: BWUnit = null
     utype.allocate(priority).flatMap{ voucher =>
       voucher.forNext(utype)
-      getAvailableWorker(pos.toPosition).build(pos, utype)
-      Bot.onCreate(utype, CreateSource.ANY)
+      val movePos = pos.toPosition
+
+      unit = getAvailableWorker(movePos)
+      Bot.moveTo(unit, movePos)
+    }.flatMap { _ =>
+      Bot.build(unit, utype, pos)
     }
     .onComplete {
       case Success(_) =>
         has += utype
         inProgress -= utype
       case Failure(_) =>
+        println("failed")
         inProgress -= utype
+        build(utype, priority)
     }
   }
 }
